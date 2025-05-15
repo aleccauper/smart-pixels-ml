@@ -53,9 +53,23 @@ def conv_network(var, n_filters=5, kernel_size=3):
     var = QActivation("quantized_tanh(4, 0, 1)")(var)    
     return var
 
-def CreateModel(shape, n_filters, pool_size):
+def CreateModel(shape, n_filters, pool_size, mean_filter=False, thresh = False):
     x_base = x_in = Input(shape)
-    stack = conv_network(x_base)
+    
+    if mean_filter:
+        stack = AveragePooling2D(
+            pool_size=(mean_filter,mean_filter), 
+            strides = (1, 1), 
+            padding = "same",
+             #data_format = "channels_first"
+        )(x_base)
+        if thresh:
+            apply_thresh = lambda x: tf.where(x < thresh, tf.zeros_like(x), x)
+            stack = Lambda(function=apply_thresh)(stack)
+        stack = conv_network(stack)
+    else:
+        stack = conv_network(x_base)
+    
     stack = AveragePooling2D(
         pool_size=(pool_size, pool_size), 
         strides=None, 

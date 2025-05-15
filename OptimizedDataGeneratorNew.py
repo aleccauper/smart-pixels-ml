@@ -68,6 +68,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             use_time_stamps = -1,
             seed: int = None,
             quantize: bool = False,
+            noise = -1, #added gaussian noise (mu, sigma), set to -1 to turn off
             max_workers: int = 1,
                  
             **kwargs,
@@ -128,6 +129,8 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             self.transpose = transpose
             self.to_standardize = to_standardize
             self.include_y_local = include_y_local
+            self.noise = noise
+
 
             self.process_file_parallel()
     
@@ -149,7 +152,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
 
 
     def process_file_parallel(self):
-        file_infos = [(afile, self.recon_cols, self.input_shape, self.transpose, self.labels_list) for afile in self.files]
+        file_infos = [(afile, self.recon_cols, self.input_shape, self.transpose, self.labels_list, self.noise) for afile in self.files]
         results = []
         with ProcessPoolExecutor(self.max_workers) as executor:
             futures = [executor.submit(self._process_file_single, file_info) for file_info in file_infos]
@@ -177,11 +180,16 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
 
     @staticmethod
     def _process_file_single(file_info):
-        afile, recon_cols, input_shape, transpose, labels_list = file_info
+        afile, recon_cols, input_shape, transpose, labels_list, noise = file_info
         df = pd.read_parquet(afile, columns=recon_cols + labels_list)
         adf, _ = split_df_to_X_y_df(df, input_shape, labels_list, recon_cols)
 
         x = adf.values
+        
+        if noise != -1:
+            bkg = np.random.normal(*noise, x.shape)
+            x = x+bkg
+            
         nonzeros = abs(x) > 0
         x[nonzeros] = np.sign(x[nonzeros]) * np.log1p(abs(x[nonzeros])) / math.log(2)
         amean, avariance = np.mean(x[nonzeros], keepdims=True), np.var(x[nonzeros], keepdims=True) + 1e-10
@@ -206,6 +214,8 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             x: Batch of inputs to be normalized.
         Returns:
             The inputs, normalized. 
+            OG scale factors: norm_factor_pos=1.7, norm_factor_neg=2.5
+            80e scale factors: norm_factor_pos=2.5, norm_factor_neg=1.85
         """
         out = (x - self.dataset_mean)/self.dataset_std
         out[out > 0] = out[out > 0]/norm_factor_pos
@@ -283,7 +293,10 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
                 joined_df = joined_df.sample(frac=1, random_state=self.seed).reset_index(drop=True)  
 
             recon_values = joined_df[recon_df_raw.columns].values            
-
+            if self.noise !=-1:
+                bkg = np.random.normal(*self.noise, recon_values.shape)
+                recon_values = recon_values + bkg
+            
             nonzeros = abs(recon_values) > 0
             
             recon_values[nonzeros] = np.sign(recon_values[nonzeros])*np.log1p(abs(recon_values[nonzeros]))/math.log(2)
