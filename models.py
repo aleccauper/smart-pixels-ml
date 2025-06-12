@@ -32,7 +32,7 @@ def var_network(var, hidden=10, output=2):
         kernel_regularizer=tf.keras.regularizers.L1L2(0.01),
     )(var)
 
-def conv_network(var, n_filters=5, kernel_size=3):
+def conv_network(var, n_filters=5, kernel_size=conv_kernel_size):
     var = QSeparableConv2D(
         n_filters,kernel_size,
         depthwise_quantizer=quantized_bits(4, 0, 1, alpha=1),
@@ -53,7 +53,7 @@ def conv_network(var, n_filters=5, kernel_size=3):
     var = QActivation("quantized_tanh(4, 0, 1)")(var)    
     return var
 
-def CreateModel(shape, n_filters, pool_size, mean_filter=False, thresh = False):
+def CreateModel(shape, n_filters, pool_size, conv_kernel_size, mean_filter=False, thresh = False):
     x_base = x_in = Input(shape)
     
     if mean_filter:

@@ -206,7 +206,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
         
         return amean, avariance, amin, amax, len_adf
 
-    def standardize(self, x, norm_factor_pos=1.7, norm_factor_neg=2.5):
+    def standardize(self, x, norm_factor_pos=4.2, norm_factor_neg=2.3):
         """
         Applies the normalization configuration in-place to a batch of inputs.
         `x` is changed in-place since the function is mainly used internally
@@ -318,7 +318,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
         recon_df, labels_df = self.current_dataframes
 
         X = recon_df[rel_idx:stop_idx]
-        y = labels_df[rel_idx:stop_idx] / np.array([75., 18.75, 8.0, 0.5])
+        y = labels_df[rel_idx:stop_idx] / np.array([75., 18.75, 8.0, 1.7]) #CHANGED 0.5 to 1.7
     
         if self.include_y_local:
             y_local = labels_df.iloc[chosen_idxs]["y-local"].values
