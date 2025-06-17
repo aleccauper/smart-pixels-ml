@@ -32,9 +32,9 @@ def var_network(var, hidden=10, output=2):
         kernel_regularizer=tf.keras.regularizers.L1L2(0.01),
     )(var)
 
-def conv_network(var, n_filters=5, kernel_size=conv_kernel_size):
+def conv_network(var, kernel_size=3, n_filters=5):
     var = QSeparableConv2D(
-        n_filters,kernel_size,
+        n_filters, kernel_size,
         depthwise_quantizer=quantized_bits(4, 0, 1, alpha=1),
         pointwise_quantizer=quantized_bits(4, 0, 1, alpha=1),
         bias_quantizer=quantized_bits(4, 0, alpha=1),
@@ -66,9 +66,9 @@ def CreateModel(shape, n_filters, pool_size, conv_kernel_size, mean_filter=False
         if thresh:
             apply_thresh = lambda x: tf.where(x < thresh, tf.zeros_like(x), x)
             stack = Lambda(function=apply_thresh)(stack)
-        stack = conv_network(stack)
+        stack = conv_network(stack, kernel_size=conv_kernel_size)
     else:
-        stack = conv_network(x_base)
+        stack = conv_network(x_base, kernel_size=conv_kernel_size)
     
     stack = AveragePooling2D(
         pool_size=(pool_size, pool_size), 
