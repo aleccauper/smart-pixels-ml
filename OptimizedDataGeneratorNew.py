@@ -133,8 +133,6 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             self.include_y_local = include_y_local
             self.noise = noise
             self.select_contained = select_contained
-
-
             self.process_file_parallel()
     
             self.current_file_index = None
@@ -184,7 +182,6 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
     @staticmethod
     def _process_file_single(file_info):
         afile, recon_cols, input_shape, transpose, labels_list, noise, select_contained= file_info
-        
         if select_contained:
             df = pd.read_parquet(afile, columns=recon_cols + labels_list +['original_atEdge'])
             df = df.loc[df['original_atEdge'] == False]
@@ -286,12 +283,12 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             parquet_file = self.files[file_idx]
             if self.select_contained:
                 all_columns_to_read = self.recon_cols + self.labels_list + ['original_atEdge']
-                df = pd.read_parquet(parquet_file, columns=all_columns_to_read).reset_index(drop=True) 
+                df = pd.read_parquet(parquet_file, columns = all_columns_to_read).reset_index(drop=True) 
                 df = df.loc[df['original_atEdge'] == False]
             else:
                 all_columns_to_read = self.recon_cols + self.labels_list
-                df = pd.read_parquet(parquet_file, columns=all_columns_to_read).reset_index(drop=True) 
-
+                df = pd.read_parquet(parquet_file, columns = all_columns_to_read).reset_index(drop=True)
+            
             # df = pd.read_parquet(parquet_file, columns=self.use_time_stamps)
             recon_df, labels_df = split_df_to_X_y_df(df, self.input_shape, self.labels_list, self.recon_cols)
 
