@@ -55,6 +55,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             tfrecords_dir: str = None,
             use_time_stamps = -1,
             select_contained = False, #If true, selects only clusters with original_atEdge==False
+            noise = -1, #added gaussian noise (mu, sigma), set to -1 to turn off
             seed: int = None,
             quantize: bool = False,
             max_workers: int = 1,
@@ -111,6 +112,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             self.input_shape = input_shape
             self.transpose = transpose
             self.to_standardize = to_standardize
+            self.noise = noise
             self.select_contained = select_contained
 
             self.process_file_parallel()
@@ -181,6 +183,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             "to_standardize": self.to_standardize,
             "transpose": self.transpose,
             "shuffle": self.shuffle,
+            "noise": self.noise,
             "select_contained": self.select_contained,
             
             "seed": self.seed,
@@ -192,8 +195,8 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
             # Calculated statistics
             "dataset_mean": self.dataset_mean.tolist() if self.dataset_mean is not None else None,
             "dataset_std": self.dataset_std.tolist() if self.dataset_std is not None else None,
-            "dataset_min": self.dataset_min if self.dataset_min is not None else None,
-            "dataset_max": self.dataset_max if self.dataset_max is not None else None,
+            "dataset_min": np.float64(self.dataset_min) if self.dataset_min is not None else None,
+            "dataset_max": np.float64(self.dataset_max) if self.dataset_max is not None else None,
             "norm_factor_pos": self.norm_factor_pos,
             "norm_factor_neg": self.norm_factor_neg,
             "labels_scale": self.labels_scale.tolist() if self.labels_scale is not None else None,
@@ -235,8 +238,8 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
         # Calculated statistics
         self.dataset_mean = np.array(metadata['dataset_mean'])
         self.dataset_std = np.array(metadata['dataset_std'])
-        self.dataset_min = metadata['dataset_min']
-        self.dataset_max = metadata['dataset_max']
+        self.dataset_min = np.float64(metadata['dataset_min'])
+        self.dataset_max = np.float64(metadata['dataset_max'])
         self.norm_factor_pos = metadata['norm_factor_pos']
         self.norm_factor_neg = metadata['norm_factor_neg']
         self.labels_scale = np.array(metadata['labels_scale'])
@@ -249,13 +252,14 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
         self.shuffle = metadata.get('shuffle', False)
         self.seed = metadata.get('seed', 13)
         self.transpose = metadata.get('transpose', None)
+        self.noise = metadata.get('noise', -1)
         if self.shuffle:
             self.rng = np.random.default_rng(seed=self.seed)
             
 
     def process_file_parallel(self):
         file_infos = [(afile, 
-                    self.recon_cols, self.labels_list, self.select_contained, 
+                    self.recon_cols, self.labels_list, self.noise, self.select_contained, 
                     self.label_scale_pctl, self.norm_pos_pctl, self.norm_neg_pctl) 
                     for afile in self.files
                     ]
@@ -296,7 +300,7 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
 
     @staticmethod
     def _process_file_single(file_info):
-        afile, recon_cols, labels_list, select_contained, label_scale_pctl, norm_pos_pctl, norm_neg_pctl = file_info
+        afile, recon_cols, labels_list, noise, select_contained, label_scale_pctl, norm_pos_pctl, norm_neg_pctl = file_info
         if select_contained:
             df = (pd.read_parquet(afile, 
                                  columns=recon_cols + labels_list +['original_atEdge'])
@@ -308,7 +312,11 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
                     .reset_index(drop=True))
         # df = pd.read_parquet(afile, columns=recon_cols + labels_list).reset_index(drop=True)
         x = df[recon_cols].values
-
+        
+        if noise != -1:
+            bkg = np.random.normal(*noise, x.shape)
+            x = x+bkg
+        
         nonzeros = abs(x) > 0
         x[nonzeros] = np.sign(x[nonzeros]) * np.log1p(abs(x[nonzeros])) / math.log(2)
         amean, avariance = np.mean(x[nonzeros], keepdims=True), np.var(x[nonzeros], keepdims=True) + 1e-10
@@ -520,6 +528,9 @@ class OptimizedDataGenerator(tf.keras.utils.Sequence):
                 labels_df = df[self.labels_list]
 
                 recon_values = recon_df.values
+                if self.noise !=-1:
+                    bkg = np.random.normal(*self.noise, recon_values.shape)
+                    recon_values = recon_values + bkg
                 nonzeros = abs(recon_values) > 0
                 recon_values[nonzeros] = np.sign(recon_values[nonzeros]) * np.log1p(abs(recon_values[nonzeros])) / np.log(2)
                 if self.to_standardize:
